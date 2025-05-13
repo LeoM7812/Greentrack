@@ -14,6 +14,10 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
+    public User getUserById(Long id) {
+        return userRepository.findById(id).orElse(null);
+    }
+
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(email);
     }
