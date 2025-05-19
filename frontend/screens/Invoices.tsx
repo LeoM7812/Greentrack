@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, Button, StyleSheet } from 'react-native';
 
-export default function Profile({ onLogout }: any) {
+export default function Invoices({ onLogout }: any) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Perfil do Utilizador</Text>
+      <Text style={styles.title}>Faturas</Text>
       <Button title="Terminar sessão" onPress={onLogout} color="red" />
     </View>
   );

@@ -1,19 +1,45 @@
+import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
+import Login from './screens/Login';
+import Register from './screens/Register';
 import Home from './screens/Home';
 import Profile from './screens/Profile';
-import SettingsPage from './screens/SettingsPage';
+import Invoices from './screens/Invoices';
 
-const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  const handleLogin = () => setIsLoggedIn(true);
+  const handleLogout = () => setIsLoggedIn(false);
+
   return (
     <NavigationContainer>
-      <Tab.Navigator>
-        <Tab.Screen name="Home" component={Home} />
-        <Tab.Screen name="Profile" component={Profile} />
-        <Tab.Screen name="Settings" component={SettingsPage} />
-      </Tab.Navigator>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!isLoggedIn ? (
+          <>
+            <Stack.Screen name="Login">
+              {props => <Login {...props} onLogin={handleLogin} />}
+            </Stack.Screen>
+            <Stack.Screen name="Register" component={Register} />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="Home">
+              {props => <Home {...props} onLogout={handleLogout} />}
+            </Stack.Screen>
+            <Stack.Screen name="Profile">
+              {props => <Profile {...props} onLogout={handleLogout} />}
+            </Stack.Screen>
+            <Stack.Screen name="Invoices">
+              {props => <Invoices {...props} onLogout={handleLogout} />}
+            </Stack.Screen>
+          </>
+        )}
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }
