@@ -11,8 +11,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.greentrack.backend.dto.SuggestionsDTO;
 
-import java.io.IOException;
-import java.util.List;
 import java.util.List;
 
 @Service
@@ -40,6 +38,7 @@ public class InvoiceService {
             standardSuggestions.setSuggestions(List.of("Suggestion 1", "Suggestion 2", "Suggestion 3"));
             return standardSuggestions;
         }
+        
     }
 }
 
