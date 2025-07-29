@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, TextInput, Button, Text, Alert, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function Login({ navigation }: any) {
+export default function Login({ navigation, onLogin }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -20,7 +20,10 @@ export default function Login({ navigation }: any) {
         const data = await response.json();
         const token = data.token;
         await AsyncStorage.setItem('token', token);
-        navigation.navigate('Profile');
+        if (onLogin) {
+          onLogin(); // Update the app's login state
+        }
+        // Don't navigate here - let the app state change handle the navigation
       } else {
         Alert.alert('Login falhou', 'Email ou password incorretos');
       }

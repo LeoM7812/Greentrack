@@ -1,14 +1,14 @@
 from flask import Flask, request, jsonify
 import fitz  # PyMuPDF
 import os
-import requests
+import openai
 
 app = Flask(__name__)
 
-OLLAMA_API_URL = "http://localhost:11434/api/chat"
-MODEL = "qwen"
+# Configura a chave da OpenAI via variável de ambiente ou diretamente (NÃO recomendado)
+openai.api_key = os.getenv("OPENAI_API_KEY", "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")  # Substituir com segurança
 
-# 📄 Extract text from PDF
+# 📄 Função para extrair texto do PDF
 def extract_text_from_pdf(pdf_path):
     doc = fitz.open(pdf_path)
     text = ""
@@ -30,17 +30,15 @@ def get_energy_suggestions():
         os.makedirs("uploads", exist_ok=True)
         file.save(file_path)
 
-        # Extract text from invoice
         invoice_text = extract_text_from_pdf(file_path)
 
-        # Build prompt
+        # Prompt para análise
         prompt = f"""
 You are a smart energy consultant.
 
 Your task is to analyze the electricity bill below and provide detailed suggestions to help reduce electricity consumption and lower costs.
 
 Specifically:
-
 - Detect if the client is on a Simple or Dual tariff.
 - Identify peak consumption times and suggest shifting usage to cheaper periods if applicable.
 - Evaluate if the contracted power (kVA) seems excessive or insufficient.
@@ -54,23 +52,15 @@ Specifically:
 Provide your answer in clear bullet points grouped by category (e.g., "Tariff Advice", "Consumption Patterns", "Sustainability").
 """
 
-        # Call Ollama locally
-        payload = {
-            "model": MODEL,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "stream": False
-        }
+        # Chamada à OpenAI
+        response = openai.chat.completions.create(
+            model="gpt-4o",  # ou "gpt-3.5-turbo" se necessário
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800
+        )
 
-        response = requests.post(OLLAMA_API_URL, json=payload)
-
-        if response.status_code != 200:
-            return jsonify({"error": f"Ollama API error: {response.status_code} - {response.text}"}), response.status_code
-
-        data = response.json()
-        suggestions = data["message"]["content"]
-
+        suggestions = response.choices[0].message.content
         return jsonify({"suggestions": suggestions})
 
     except Exception as e:
