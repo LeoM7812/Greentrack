@@ -14,38 +14,37 @@ const Stack = createNativeStackNavigator();
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [navKey, setNavKey] = useState(0); // chave para forçar reset
 
-  // Check for existing token on app startup
   useEffect(() => {
     const checkAuthState = async () => {
-      try {
-        const token = await AsyncStorage.getItem('token');
-        if (token) {
-          setIsLoggedIn(true);
-        }
-      } catch (error) {
-        console.error('Error checking auth state:', error);
-      } finally {
-        setIsLoading(false);
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        setIsLoggedIn(true);
+      } else {
+        setIsLoggedIn(false);
       }
+      setIsLoading(false);
     };
-
     checkAuthState();
   }, []);
 
-  const handleLogin = () => setIsLoggedIn(true);
-  const handleLogout = async () => {
-    await AsyncStorage.removeItem('token');
-    setIsLoggedIn(false);
+  const handleLogin = () => {
+    setIsLoggedIn(true);
+    setNavKey(prev => prev + 1); // força recriação da árvore de navegação
   };
 
-  // Show loading screen while checking auth state
-  if (isLoading) {
-    return null; // Or a loading component
-  }
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('userId');
+    setIsLoggedIn(false);
+    setNavKey(prev => prev + 1); // força reset da navegação
+  };
+
+  if (isLoading) return null;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer key={navKey}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isLoggedIn ? (
           <>

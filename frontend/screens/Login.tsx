@@ -19,12 +19,14 @@ export default function Login({ navigation, onLogin }: any) {
       if (response.ok) {
         const data = await response.json();
         const token = data.token;
+        const userId = data.userId; // <- garantir que o backend envia isto!
         await AsyncStorage.setItem('token', token);
+        await AsyncStorage.setItem('userId', userId);
         if (onLogin) {
           onLogin(); // Update the app's login state
         }
-        // Don't navigate here - let the app state change handle the navigation
-      } else {
+      }
+      else {
         Alert.alert('Login falhou', 'Email ou password incorretos');
       }
     } catch (error) {
