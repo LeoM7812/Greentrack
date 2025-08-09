@@ -45,11 +45,8 @@ export default function Profile({ navigation }: any) {
       } finally {
         setLoading(false);
       }
-    } catch (error) {
-      console.error('Erro ao buscar utilizador:', error);
-      setUserData(null);
-    }
-  };
+    };
+
     fetchUser();
   }, []);
 
