@@ -54,9 +54,9 @@ Provide your answer in clear bullet points grouped by category (e.g., "Tariff Ad
 
         # Chamada à OpenAI
         response = openai.chat.completions.create(
-            model="gpt-4o",  # ou "gpt-3.5-turbo" se necessário
+            model="gpt-4.1-nano",  # ou "gpt-3.5-turbo" se necessário
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            temperature=0.7, #nivel de criatividade mais perto do 0-mais técnico mais perto do 1-mais criativo  
             max_tokens=800
         )
 

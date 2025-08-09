@@ -10,6 +10,7 @@ import {
   Alert
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 
 export default function Profile({ navigation }: any) {
   const [userData, setUserData] = useState<any>(null);
@@ -44,8 +45,11 @@ export default function Profile({ navigation }: any) {
       } finally {
         setLoading(false);
       }
-    };
-
+    } catch (error) {
+      console.error('Erro ao buscar utilizador:', error);
+      setUserData(null);
+    }
+  };
     fetchUser();
   }, []);
 
