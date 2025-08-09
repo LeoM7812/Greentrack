@@ -17,6 +17,10 @@ public class UserService {
     public User getUserById(Long id) {
         return userRepository.findById(id).orElse(null);
     }
+    
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(email).orElse(null);
+    }
 
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(email);
@@ -24,6 +28,7 @@ public class UserService {
 
     public void registerUser(RegisterRequest request) {
         User user = new User();
+        user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         userRepository.save(user);
