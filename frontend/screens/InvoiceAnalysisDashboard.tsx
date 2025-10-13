@@ -8,12 +8,47 @@ import {
   StatusBar,
   Dimensions,
 } from 'react-native';
-import { InvoiceAnalysis } from '../types/InvoiceAnalysis';
 
 const { width } = Dimensions.get('window');
 
+// 💡 Funções auxiliares
+const formatKey = (key: string) => {
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .replace(/kwh/i, 'kWh')
+    .replace(/kVA/i, 'kVA')
+    .trim();
+};
+
+const formatContractedPower = (value: any) => {
+  if (!value) return 'N/A (Não detetado)';
+  const valueStr = String(value).replace(/\s+/g, '').trim(); // remove espaços e caracteres invisíveis
+  const normalized = valueStr.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // remove acentos
+
+  // já contém unidade
+  if (normalized.includes('kva') || normalized.includes('kw')) return valueStr;
+
+  const numValue = parseFloat(valueStr.replace(',', '.'));
+  if (!isNaN(numValue) && numValue > 0) {
+    return `${numValue.toFixed(2).replace('.', ',')} kVA`;
+  }
+  return valueStr;
+};
+
+
 export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
   const { analysis } = route.params;
+  const data = analysis.analysis_data || analysis; // ✅ CORREÇÃO PRINCIPAL
+
+  console.log('📊 Dados recebidos no dashboard:', JSON.stringify(data, null, 2));
+
+
+  const EXCLUDED_KEYS = [
+    'period', 'consumptionKwh', 'totalAmount', 'tariffType', 'contractedPower',
+    'averageDaily', 'suggestions', 'insights', 'comparisonPreviousMonth',
+    'processingStatus', 'readabilityCheck', 'uploadDate'
+  ];
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -41,18 +76,12 @@ export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#2E7D32" />
-      
+
       <View style={styles.backgroundGradient}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContainer}
-          showsVerticalScrollIndicator={false}
-        >
+        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
           {/* Header */}
           <View style={styles.headerContainer}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
               <Text style={styles.backIcon}>←</Text>
               <Text style={styles.backText}>Voltar</Text>
             </TouchableOpacity>
@@ -61,18 +90,18 @@ export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
               <Text style={styles.headerIcon}>📈</Text>
             </View>
             <Text style={styles.headerTitle}>Análise da Fatura</Text>
-            <Text style={styles.headerSubtitle}>{analysis.period}</Text>
+            <Text style={styles.headerSubtitle}>{data.period}</Text>
           </View>
 
-          {/* Warning de Legibilidade (se aplicável) */}
-          {(analysis as any).processingStatus === 'warning_unreadable' && (
+          {/* Warning de legibilidade */}
+          {analysis.processingStatus === 'warning_unreadable' && (
             <View style={styles.warningContainer}>
               <View style={styles.warningCard}>
                 <Text style={styles.warningIcon}>⚠️</Text>
                 <View style={styles.warningContent}>
                   <Text style={styles.warningTitle}>Fatura Difícil de Ler</Text>
                   <Text style={styles.warningText}>
-                    {(analysis as any).readabilityCheck || 'A qualidade da imagem pode estar comprometida'}
+                    {analysis.readabilityCheck || 'A qualidade da imagem pode estar comprometida'}
                   </Text>
                   <Text style={styles.warningAdvice}>
                     💡 Para melhores resultados, use uma imagem com melhor qualidade ou um PDF
@@ -85,33 +114,17 @@ export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
           {/* Resumo Principal */}
           <View style={styles.summaryContainer}>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>{formatCurrency(analysis.totalAmount)}</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(data.totalAmount)}</Text>
               <Text style={styles.summaryLabel}>Valor Total</Text>
-              {analysis.comparisonPreviousMonth?.amountDifference && (
-                <Text style={[
-                  styles.summaryChange,
-                  { color: analysis.comparisonPreviousMonth.amountDifference > 0 ? '#F44336' : '#4CAF50' }
-                ]}>
-                  {formatPercentage(analysis.comparisonPreviousMonth.amountDifference)}
-                </Text>
-              )}
             </View>
 
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>{formatKwh(analysis.consumptionKwh)}</Text>
+              <Text style={styles.summaryValue}>{formatKwh(data.consumptionKwh)}</Text>
               <Text style={styles.summaryLabel}>Consumo</Text>
-              {analysis.comparisonPreviousMonth?.consumptionDifference && (
-                <Text style={[
-                  styles.summaryChange,
-                  { color: analysis.comparisonPreviousMonth.consumptionDifference > 0 ? '#F44336' : '#4CAF50' }
-                ]}>
-                  {formatPercentage(analysis.comparisonPreviousMonth.consumptionDifference)}
-                </Text>
-              )}
             </View>
 
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>{analysis.averageDaily.toFixed(1)}</Text>
+              <Text style={styles.summaryValue}>{data.averageDaily?.toFixed(1)}</Text>
               <Text style={styles.summaryLabel}>kWh/dia</Text>
               <Text style={styles.summarySubLabel}>Média diária</Text>
             </View>
@@ -120,100 +133,91 @@ export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
           {/* Detalhes da Tarifa */}
           <View style={styles.detailsContainer}>
             <Text style={styles.sectionTitle}>Detalhes da Tarifa</Text>
-            
             <View style={styles.detailCard}>
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Tipo de Tarifa:</Text>
-                <Text style={styles.detailValue}>{analysis.tariffType.charAt(0).toUpperCase() + analysis.tariffType.slice(1)}</Text>
+                <Text style={styles.detailValue}>{data.tariffType || 'N/A'}</Text>
               </View>
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Potência Contratada:</Text>
-                <Text style={styles.detailValue}>{analysis.contractedPower} kVA</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Data de Processamento:</Text>
-                <Text style={styles.detailValue}>{new Date(analysis.uploadDate).toLocaleDateString('pt-PT')}</Text>
+                <Text style={styles.detailValue}>{formatContractedPower(data.contractedPower)}</Text>
               </View>
             </View>
           </View>
 
+          {/* Outras Informações */}
+          {Object.keys(data).some(k => !EXCLUDED_KEYS.includes(k) && (typeof data[k] === 'string' || typeof data[k] === 'number')) && (
+            <View style={styles.detailsContainer}>
+              <Text style={styles.sectionTitle}>Outras Informações</Text>
+              <View style={styles.detailCard}>
+                {Object.entries(data).map(([key, value]) => {
+                  const isSimpleValue = typeof value === 'string' || typeof value === 'number';
+                  if (!EXCLUDED_KEYS.includes(key) && isSimpleValue && value) {
+                    return (
+                      <View key={key} style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>{formatKey(key)}:</Text>
+                        <Text style={styles.detailValue}>{String(value)}</Text>
+                      </View>
+                    );
+                  }
+                  return null;
+                })}
+              </View>
+            </View>
+          )}
+
           {/* Insights */}
-          {analysis.insights && (
+          {data.insights && (
             <View style={styles.insightsContainer}>
               <Text style={styles.sectionTitle}>Insights</Text>
-              
               <View style={styles.insightCard}>
-                {analysis.insights.peakConsumptionHours && (
-                  <View style={styles.insightItem}>
-                    <Text style={styles.insightIcon}>⏰</Text>
-                    <View style={styles.insightContent}>
-                      <Text style={styles.insightTitle}>Pico de Consumo</Text>
-                      <Text style={styles.insightDescription}>{analysis.insights.peakConsumptionHours}</Text>
-                    </View>
-                  </View>
-                )}
+                {Object.entries(data.insights ?? {}).map(([key, value]: [string, any]) => {
+                  if (typeof value === 'object') {
+                    return (
+                      <View key={key} style={{ marginBottom: 10 }}>
+                        <Text style={styles.insightTitle}>{formatKey(key)}</Text>
+                        {Object.entries(value ?? {}).map(([subKey, subVal]: [string, any]) => (
+                          <Text key={subKey} style={styles.insightDescription}>
+                            • {formatKey(subKey)}: {String(subVal)}
+                          </Text>
+                        ))}
 
-                {analysis.insights.highestCosts && (
-                  <View style={styles.insightItem}>
-                    <Text style={styles.insightIcon}>💰</Text>
-                    <View style={styles.insightContent}>
-                      <Text style={styles.insightTitle}>Maior Custo</Text>
-                      <Text style={styles.insightDescription}>{analysis.insights.highestCosts}</Text>
+                      </View>
+                    );
+                  }
+                  return (
+                    <View key={key} style={styles.insightItem}>
+                      <Text style={styles.insightIcon}>🔍</Text>
+                      <View style={styles.insightContent}>
+                        <Text style={styles.insightTitle}>{formatKey(key)}</Text>
+                        <Text style={styles.insightDescription}>{String(value)}</Text>
+                      </View>
                     </View>
-                  </View>
-                )}
+                  );
+                })}
               </View>
             </View>
           )}
 
           {/* Sugestões */}
-          <View style={styles.suggestionsContainer}>
-            <Text style={styles.sectionTitle}>Sugestões de Poupança</Text>
-            
-            {analysis.suggestions.map((suggestion: any, index: number) => (
-              <View key={index} style={styles.suggestionCard}>
-                <View style={styles.suggestionHeader}>
-                  <View style={styles.suggestionIconContainer}>
-                    <Text style={styles.suggestionIcon}>{getCategoryIcon(suggestion.category)}</Text>
-                  </View>
-                  <View style={styles.suggestionInfo}>
-                    <Text style={styles.suggestionTitle}>{suggestion.title}</Text>
-                    <Text style={styles.suggestionCategory}>{suggestion.category.toUpperCase()}</Text>
-                  </View>
-                  <View style={styles.suggestionPriority}>
-                    {suggestion.potentialSaving && (
-                      <Text style={styles.suggestionSaving}>
-                        {formatCurrency(suggestion.potentialSaving)}/mês
-                      </Text>
-                    )}
-                    <View style={[
-                      styles.priorityBadge,
-                      { backgroundColor: getPriorityColor(suggestion.priority) }
-                    ]}>
-                      <Text style={styles.priorityText}>{suggestion.priority.toUpperCase()}</Text>
-                    </View>
-                  </View>
+          {data.suggestions && data.suggestions.length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              <Text style={styles.sectionTitle}>Sugestões de Poupança</Text>
+              {data.suggestions.map((s: any, index: number) => (
+                <View key={index} style={styles.suggestionCard}>
+                  <Text style={styles.suggestionDescription}>💡 {typeof s === 'string' ? s : s.description}</Text>
                 </View>
-                
-                <Text style={styles.suggestionDescription}>{suggestion.description}</Text>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
 
           {/* Ações */}
           <View style={styles.actionsContainer}>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => navigation.navigate('Invoices')}
-            >
+            <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Invoices')}>
               <Text style={styles.actionIcon}>📄</Text>
               <Text style={styles.actionText}>Ver Todas as Faturas</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.secondaryButton]}
-              onPress={() => navigation.navigate('Home')}
-            >
+            <TouchableOpacity style={[styles.actionButton, styles.secondaryButton]} onPress={() => navigation.navigate('Home')}>
               <Text style={styles.actionIcon}>🏠</Text>
               <Text style={styles.actionText}>Voltar ao Início</Text>
             </TouchableOpacity>
@@ -224,292 +228,43 @@ export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
   );
 }
 
+// 🧱 Estilos (os mesmos que já tinhas)
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#1B5E20',
-  },
-  backgroundGradient: {
-    flex: 1,
-    backgroundColor: '#2E7D32',
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 40,
-  },
-  headerContainer: {
-    alignItems: 'center',
-    marginBottom: 32,
-    position: 'relative',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 1,
-  },
-  backIcon: {
-    fontSize: 20,
-    color: '#FFFFFF',
-    marginRight: 4,
-  },
-  backText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '500',
-  },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  headerIcon: {
-    fontSize: 36,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
-    textAlign: 'center',
-  },
-  summaryContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 32,
-  },
-  summaryCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  summaryValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2E7D32',
-    marginBottom: 4,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
-  },
-  summarySubLabel: {
-    fontSize: 10,
-    color: '#999',
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  summaryChange: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  detailsContainer: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  detailCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  detailLabel: {
-    fontSize: 14,
-    color: '#666',
-    flex: 1,
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#212529',
-    flex: 1,
-    textAlign: 'right',
-  },
-  insightsContainer: {
-    marginBottom: 32,
-  },
-  insightCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  insightItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  insightIcon: {
-    fontSize: 24,
-    marginRight: 12,
-    marginTop: 2,
-  },
-  insightContent: {
-    flex: 1,
-  },
-  insightTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212529',
-    marginBottom: 4,
-  },
-  insightDescription: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-  },
-  suggestionsContainer: {
-    marginBottom: 32,
-  },
-  suggestionCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  suggestionHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  suggestionIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#F8F9FA',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  suggestionIcon: {
-    fontSize: 20,
-  },
-  suggestionInfo: {
-    flex: 1,
-  },
-  suggestionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212529',
-    marginBottom: 2,
-  },
-  suggestionCategory: {
-    fontSize: 12,
-    color: '#6C757D',
-    fontWeight: '500',
-  },
-  suggestionPriority: {
-    alignItems: 'flex-end',
-  },
-  suggestionSaving: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  priorityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  priorityText: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  suggestionDescription: {
-    fontSize: 14,
-    color: '#495057',
-    lineHeight: 20,
-  },
-  actionsContainer: {
-    marginTop: 8,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(33, 150, 243, 0.9)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#2196F3',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  secondaryButton: {
-    backgroundColor: 'rgba(108, 117, 125, 0.9)',
-    shadowColor: '#6C757D',
-  },
-  actionIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  actionText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  // Estilos para Warning de Legibilidade
-  warningContainer: {
+  container: { flex: 1, backgroundColor: '#1B5E20' },
+  backgroundGradient: { flex: 1, backgroundColor: '#2E7D32' },
+  scrollContainer: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 60, paddingBottom: 40 },
+  headerContainer: { alignItems: 'center', marginBottom: 32, position: 'relative' },
+  backButton: { position: 'absolute', top: 0, left: 0, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+  backIcon: { fontSize: 20, color: '#FFFFFF', marginRight: 4 },
+  backText: { fontSize: 14, color: '#FFFFFF', fontWeight: '500' },
+  iconContainer: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginBottom: 16, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  headerIcon: { fontSize: 36 },
+  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 4 },
+  headerSubtitle: { fontSize: 16, color: 'rgba(255,255,255,0.8)' },
+  summaryContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32 },
+  summaryCard: { backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 16, padding: 16, alignItems: 'center', flex: 1, marginHorizontal: 4 },
+  summaryValue: { fontSize: 18, fontWeight: 'bold', color: '#2E7D32', marginBottom: 4 },
+  summaryLabel: { fontSize: 12, color: '#666' },
+  summarySubLabel: { fontSize: 10, color: '#999' },
+  detailsContainer: { marginBottom: 32 },
+  sectionTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 16, textAlign: 'center' },
+  detailCard: { backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 16, padding: 20 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  detailLabel: { fontSize: 14, color: '#666' },
+  detailValue: { fontSize: 14, fontWeight: '600', color: '#212529' },
+  insightCard: { backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 16, padding: 20 },
+  insightItem: { flexDirection: 'row', marginBottom: 16 },
+  insightIcon: { fontSize: 24, marginRight: 12 },
+  insightTitle: { fontSize: 16, fontWeight: '600', color: '#212529' },
+  insightDescription: { fontSize: 14, color: '#666', lineHeight: 20 },
+  suggestionCard: { backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 16, padding: 16, marginBottom: 16 },
+  suggestionDescription: { fontSize: 14, color: '#495057', lineHeight: 20 },
+  actionsContainer: { marginTop: 8 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(33,150,243,0.9)', borderRadius: 16, padding: 16, marginBottom: 16 },
+  secondaryButton: { backgroundColor: 'rgba(108,117,125,0.9)' },
+  actionIcon: { fontSize: 18, marginRight: 8 },
+  actionText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+    warningContainer: {
     marginTop: 16,
     marginBottom: 16,
   },
@@ -552,4 +307,13 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     lineHeight: 16,
   },
+  insightsContainer: {
+    marginBottom: 32,
+  },
+  insightContent: {
+    flex: 1,
+  },
+  suggestionsContainer: {
+    marginBottom: 32,
+  }
 });
