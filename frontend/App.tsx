@@ -8,6 +8,7 @@ import Register from './screens/Register';
 import Home from './screens/Home';
 import Profile from './screens/Profile';
 import Invoices from './screens/Invoices';
+import InvoiceAnalysisDashboard from './screens/InvoiceAnalysisDashboard';
 
 const Stack = createNativeStackNavigator();
 
@@ -64,6 +65,10 @@ export default function App() {
             <Stack.Screen name="Invoices">
               {props => <Invoices {...props} onLogout={handleLogout} />}
             </Stack.Screen>
+            <Stack.Screen 
+              name="InvoiceAnalysisDashboard" 
+              component={InvoiceAnalysisDashboard} 
+            />
           </>
         )}
       </Stack.Navigator>

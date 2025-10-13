@@ -28,6 +28,13 @@ export default function Home({ navigation, onLogout }: any) {
       color: '#2196F3'
     },
     {
+      icon: '📈',
+      title: 'Análise Inteligente',
+      subtitle: 'Carregar e analisar nova fatura',
+      action: () => navigation.navigate('Invoices'),
+      color: '#00BCD4'
+    },
+    {
       icon: '📊',
       title: 'Relatórios',
       subtitle: 'Análise de consumo',

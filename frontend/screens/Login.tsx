@@ -30,7 +30,7 @@ export default function Login({ navigation, onLogin }: any) {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/login', {
+      const response = await fetch('http://localhost:8080/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -41,11 +41,11 @@ export default function Login({ navigation, onLogin }: any) {
       if (response.ok) {
         const data = await response.json();
         const token = data.token;
-        const userId = data.userId; // <- garantir que o backend envia isto!
+        const userId = data.userId; 
         await AsyncStorage.setItem('token', token);
         await AsyncStorage.setItem('userId', userId);
         if (onLogin) {
-          onLogin(); // Update the app's login state
+          onLogin(); 
         }
       }
       else {

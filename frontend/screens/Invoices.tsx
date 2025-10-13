@@ -7,13 +7,67 @@ import {
   ScrollView,
   StatusBar,
   ActivityIndicator,
-  Alert
+  Alert,
+  Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { InvoiceAnalysis } from '../types/InvoiceAnalysis';
 
 export default function Invoices({ onLogout, navigation }: any) {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+
+  // Função para converter resposta do backend para InvoiceAnalysis
+  const convertToAnalysis = (backendResponse: any): InvoiceAnalysis => {
+    console.log('🔄 Convertendo dados do backend:', backendResponse);
+    
+    // Os dados vêm diretamente do SuggestionsDTO (não nested em analysis_data)
+    const analysisData = backendResponse; // Usar dados diretos
+    
+    // Parsear sugestões em formato estruturado
+    const suggestions = (backendResponse.suggestions || []).map((suggestion: string, index: number) => {
+      // Tentar extrair categoria do formato [CATEGORIA] título: descrição
+      const categoryMatch = suggestion.match(/^\[([^\]]+)\]/);
+      const category = categoryMatch ? categoryMatch[1].toLowerCase() : 'consumo';
+      
+      // Extrair título e descrição
+      const withoutCategory = suggestion.replace(/^\[[^\]]+\]\s*/, '');
+      const parts = withoutCategory.split(':');
+      const title = parts[0]?.trim() || `Sugestão ${index + 1}`;
+      const description = parts.slice(1).join(':').trim() || suggestion;
+      
+      // Extrair poupança se existir
+      const savingMatch = description.match(/Poupança:\s*€(\d+(?:\.\d+)?)/);
+      const potentialSaving = savingMatch ? parseFloat(savingMatch[1]) : undefined;
+      
+      return {
+        category: category as any,
+        title,
+        description: description.replace(/\(Poupança:.*?\)/, '').trim(),
+        potentialSaving,
+        priority: 'media' as any
+      };
+    });
+
+    const result = {
+      period: analysisData.period || 'Período não identificado',
+      consumptionKwh: analysisData.consumptionKwh || 0,
+      totalAmount: analysisData.totalAmount || 0,
+      averageDaily: analysisData.averageDaily || 0,
+      tariffType: analysisData.tariffType || 'desconhecido',
+      contractedPower: analysisData.contractedPower || 0,
+      suggestions,
+      insights: analysisData.insights || {},
+      uploadDate: new Date().toISOString(),
+      processingStatus: 'success' as const
+    };
+    
+    console.log('✅ Dados convertidos para dashboard:', result);
+    return result;
+  };
 
   // Mock data para demonstração
   const mockInvoices = [
@@ -64,6 +118,138 @@ export default function Invoices({ onLogout, navigation }: any) {
 
     return () => clearTimeout(loadInvoices);
   }, []);
+
+  const handleUploadInvoice = async () => {
+    try {
+      setUploading(true);
+
+      // Selecionar arquivo
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        setUploading(false);
+        return;
+      }
+
+      const file = result.assets[0];
+      
+      console.log('Arquivo selecionado:', {
+        name: file.name,
+        uri: file.uri,
+        type: file.mimeType,
+        size: file.size
+      });
+
+      // Preparar FormData para React Native/Expo usando FileSystem
+      console.log('Preparando upload com detecção de plataforma...');
+      
+      // Verificar se temos uma URI válida
+      if (!file.uri) {
+        Alert.alert('Erro', 'URI do arquivo não encontrada');
+        setUploading(false);
+        return;
+      }
+
+      console.log('Plataforma detectada:', Platform.OS);
+
+      // Função para upload dependendo da plataforma
+      if (Platform.OS === 'web') {
+        // Para web, usar fetch com FormData tradicional
+        console.log('Usando abordagem WEB...');
+        
+        try {
+          // Converter o arquivo para Blob para web
+          const response = await fetch(file.uri);
+          const blob = await response.blob();
+          
+          const formData = new FormData();
+          formData.append('file', blob, file.name || 'invoice.pdf');
+
+          console.log('FormData criado para web, fazendo upload DIRETO para teste...');
+
+          // Ir direto para o endpoint de teste, pulando debug
+          const testResponse = await fetch('http://localhost:8080/api/invoices/upload-test', {
+            method: 'POST',
+            body: formData,
+          });
+
+          console.log('Resposta do teste web:', testResponse.status);
+
+          if (testResponse.ok) {
+            const suggestions = await testResponse.json();
+            console.log('✅ Dados do teste:', suggestions);
+            
+            // Converter para formato de análise
+            const analysis = convertToAnalysis(suggestions);
+            
+            // Navegar para dashboard de análise
+            navigation.navigate('InvoiceAnalysisDashboard', { analysis });
+          } else {
+            const errorText = await testResponse.text();
+            Alert.alert(
+              'Erro no Upload',
+              `Não foi possível processar a fatura.\nCódigo: ${testResponse.status}\nDetalhes: ${errorText}`
+            );
+          }
+
+        } catch (webError: any) {
+          console.error('Erro no upload web:', webError);
+          Alert.alert('Erro', 'Erro no upload web: ' + (webError?.message || 'Erro desconhecido'));
+        }
+
+      } else {
+        // Para mobile (iOS/Android), usar FileSystem.uploadAsync
+        console.log('Usando abordagem MOBILE DIRETO para teste...');
+        
+        try {
+          // Ir direto para o endpoint de teste
+          const testUploadResult = await FileSystem.uploadAsync(
+            'http://localhost:8080/api/invoices/upload-test',
+            file.uri,
+            {
+              fieldName: 'file',
+              httpMethod: 'POST',
+              uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+            }
+          );
+
+          console.log('Upload result mobile teste:', testUploadResult.status, testUploadResult.body);
+
+          if (testUploadResult.status === 200) {
+            const suggestions = JSON.parse(testUploadResult.body);
+            console.log('✅ Dados do teste mobile:', suggestions);
+            
+            // Converter para formato de análise
+            const analysis = convertToAnalysis(suggestions);
+            
+            // Navegar para dashboard de análise
+            navigation.navigate('InvoiceAnalysisDashboard', { analysis });
+          } else {
+            Alert.alert(
+              'Erro no Upload',
+              `Não foi possível processar a fatura.\nCódigo: ${testUploadResult.status}\nDetalhes: ${testUploadResult.body}`
+            );
+          }
+
+        } catch (mobileError: any) {
+          console.error('Erro com FileSystem mobile:', mobileError);
+          Alert.alert('Erro', 'Erro no upload mobile: ' + (mobileError?.message || 'Erro desconhecido'));
+        }
+      }
+
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      Alert.alert(
+        'Erro',
+        'Ocorreu um erro ao fazer o upload da fatura. Verifique sua conexão e tente novamente.'
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -183,9 +369,22 @@ export default function Invoices({ onLogout, navigation }: any) {
 
           {/* Action Buttons */}
           <View style={styles.actionsContainer}>
-            <TouchableOpacity style={styles.uploadButton}>
-              <Text style={styles.uploadIcon}>📤</Text>
-              <Text style={styles.uploadText}>Carregar Nova Fatura</Text>
+            <TouchableOpacity 
+              style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+              onPress={handleUploadInvoice}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+                  <Text style={styles.uploadText}>Processando...</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.uploadIcon}>📤</Text>
+                  <Text style={styles.uploadText}>Carregar Nova Fatura</Text>
+                </>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
@@ -436,6 +635,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  uploadButtonDisabled: {
+    backgroundColor: 'rgba(33, 150, 243, 0.5)',
+    shadowOpacity: 0.1,
+    elevation: 2,
   },
   uploadIcon: {
     fontSize: 18,
