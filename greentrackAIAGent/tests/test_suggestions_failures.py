@@ -100,3 +100,22 @@ def test_valid_llm_json_still_succeeds(client, monkeypatch):
     # Happy path must keep working (guards against over-correcting).
     assert resp.status_code == 200
     assert body["analysis_data"]["consumptionKwh"] == 245.0
+
+
+def test_client_filename_cannot_escape_uploads_dir(client, monkeypatch, tmp_path):
+    good = json.dumps({"period": "x", "consumptionKwh": 1, "totalAmount": 1,
+                       "tariffType": "simples", "contractedPower": 1})
+    monkeypatch.setattr(ai_agent, "openai", _fake_openai(lambda **kw: _llm_reply(good)))
+    seen_paths = []
+
+    def record(path):
+        seen_paths.append(path)
+        return READABLE_BILL_TEXT
+
+    monkeypatch.setattr(ai_agent, "extract_text_from_pdf", record)
+
+    _upload(client, filename="../../escaped.pdf")
+
+    uploads_dir = (tmp_path / "uploads").resolve()
+    saved = (tmp_path / seen_paths[0]).resolve()
+    assert saved.parent == uploads_dir
