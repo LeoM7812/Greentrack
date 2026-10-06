@@ -35,9 +35,7 @@ public class InvoiceController {
                 return ResponseEntity.badRequest().build();
             }
             
-            SuggestionsDTO suggestions = invoiceService.processInvoice(file);
-            System.out.println("Processamento concluído com sucesso");
-            return ResponseEntity.ok(suggestions);
+            return toResponse(invoiceService.processInvoice(file));
         } catch (Exception e) {
             System.err.println("Erro no upload: " + e.getMessage());
             e.printStackTrace();
@@ -217,70 +215,25 @@ public class InvoiceController {
     @PostMapping("/upload-test")
     public ResponseEntity<SuggestionsDTO> uploadTest(@RequestParam("file") MultipartFile file) {
         try {
-            System.out.println("=== UPLOAD TESTE - TENTANDO AI AGENT PRIMEIRO ===");
-            System.out.println("Arquivo: " + file.getOriginalFilename() + " (" + file.getSize() + " bytes)");
-            
-            // PRIMEIRO: Tentar processar com AI agent
-            try {
-                System.out.println("🤖 Tentando processar com AI agent...");
-                SuggestionsDTO aiResult = invoiceService.processInvoice(file);
-                
-                // Verificar se o AI agent retornou dados válidos
-                if (aiResult != null) {
-                    // Verificar se há warning de legibilidade
-                    if ("warning_unreadable".equals(aiResult.getProcessingStatus())) {
-                        System.out.println("⚠️ WARNING: Fatura não legível detectada pelo AI agent");
-                        System.out.println("Detalhes: " + aiResult.getReadabilityCheck());
-                        // Retornar warning mesmo assim para que o frontend possa mostrar
-                        return ResponseEntity.ok(aiResult);
-                    }
-                    
-                    // Verificar se há dados válidos de consumo
-                    if (aiResult.getConsumptionKwh() > 0) {
-                        System.out.println("✅ AI Agent funcionou! Dados extraídos com sucesso");
-                        System.out.println("Consumo: " + aiResult.getConsumptionKwh() + " kWh");
-                        System.out.println("Valor: €" + aiResult.getTotalAmount());
-                        return ResponseEntity.ok(aiResult);
-                    } else {
-                        System.out.println("⚠️ AI Agent retornou dados vazios/inválidos");
-                    }
-                } else {
-                    System.out.println("⚠️ AI Agent retornou resultado nulo");
-                }
-                
-            } catch (Exception aiError) {
-                System.err.println("❌ Erro no AI Agent: " + aiError.getMessage());
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().build();
             }
-            
-            // FALLBACK: Se AI agent falhou, usar dados mock
-            System.out.println("🔄 Usando dados FALLBACK mock...");
-            SuggestionsDTO mockData = new SuggestionsDTO();
-            
-            // Sugestões formatadas
-            mockData.setSuggestions(List.of(
-                "[TARIFA] Mude para tarifa bi-horária: Com seu perfil pode poupar €12/mês (Poupança: €12.00/mês)",
-                "[CONSUMO] Reduza standby: Desligue aparelhos em standby (Poupança: €8.00/mês)",
-                "[SUSTENTABILIDADE] Lâmpadas LED: Substitua por LED para eficiência (Poupança: €5.00/mês)"
-            ));
-            
-            // Dados da análise COMPLETOS
-            mockData.setPeriod("Janeiro 2024");
-            mockData.setConsumptionKwh(245.5);
-            mockData.setTotalAmount(89.47);
-            mockData.setAverageDaily(7.9);
-            mockData.setTariffType("simples");
-            mockData.setContractedPower(6.9);
-            mockData.setUploadDate(java.time.LocalDateTime.now().toString());
-            mockData.setProcessingStatus("fallback_mock");
-            
-            System.out.println("✅ Retornando dados mock como fallback");
-            return ResponseEntity.ok(mockData);
-            
+            return toResponse(invoiceService.processInvoice(file));
         } catch (Exception e) {
-            System.err.println("❌ Erro geral no teste: " + e.getMessage());
+            System.err.println("❌ Erro no upload: " + e.getMessage());
             e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
-}
 
+    /**
+     * A failed analysis is an error for the client, never a 200 with placeholder data.
+     * Readability warnings stay 200 so the app can show the tips.
+     */
+    private ResponseEntity<SuggestionsDTO> toResponse(SuggestionsDTO result) {
+        if (result == null || result.analysisFailed()) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(result);
+        }
+        return ResponseEntity.ok(result);
+    }
+}

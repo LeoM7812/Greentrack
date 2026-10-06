@@ -17,6 +17,7 @@ public class SuggestionsDTO {
     private String uploadDate;
     private String processingStatus;
     private String readabilityCheck; // Nova propriedade para verificação de legibilidade
+    private String error; // Mensagem para o utilizador quando a análise falha
 
     // Getters and Setters
 
@@ -106,5 +107,18 @@ public class SuggestionsDTO {
 
     public void setReadabilityCheck(String readabilityCheck) {
         this.readabilityCheck = readabilityCheck;
+    }
+
+    public String getError() {
+        return error;
+    }
+
+    public void setError(String error) {
+        this.error = error;
+    }
+
+    /** True when the AI step failed and no bill data may be shown. */
+    public boolean analysisFailed() {
+        return processingStatus != null && processingStatus.startsWith("error");
     }
 }
