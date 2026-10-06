@@ -63,11 +63,38 @@ export default function Invoices({ onLogout, navigation }: any) {
       suggestions,
       insights: analysisData.insights || {},
       uploadDate: new Date().toISOString(),
-      processingStatus: 'success' as const
+      processingStatus: (analysisData.processingStatus === 'success' ? 'success' : 'error') as InvoiceAnalysis['processingStatus']
     };
     
     console.log('✅ Dados convertidos para dashboard:', result);
     return result;
+  };
+
+  // Decide what to show for an upload response. Only a real success opens the dashboard;
+  // warnings and errors are shown as messages, never as an analysis with placeholder numbers.
+  const handleUploadResult = (status: number, rawBody: string) => {
+    let body: any = null;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      body = null;
+    }
+
+    if (status === 200 && body?.processingStatus === 'success') {
+      navigation.navigate('InvoiceAnalysisDashboard', { analysis: convertToAnalysis(body) });
+      return;
+    }
+
+    if (status === 200 && body?.suggestions?.length) {
+      // Readability warnings (e.g. blurry photo): show the tips from the AI service.
+      Alert.alert('Não foi possível ler a fatura', body.suggestions.join('\n'));
+      return;
+    }
+
+    Alert.alert(
+      'Não foi possível analisar a fatura',
+      body?.error || 'Ocorreu um erro ao processar a fatura. Tente novamente mais tarde.'
+    );
   };
 
   // Mock data para demonstração
@@ -178,23 +205,7 @@ export default function Invoices({ onLogout, navigation }: any) {
           });
 
           console.log('Resposta do teste web:', testResponse.status);
-
-          if (testResponse.ok) {
-            const suggestions = await testResponse.json();
-            console.log('✅ Dados do teste:', suggestions);
-            
-            // Converter para formato de análise
-            const analysis = convertToAnalysis(suggestions);
-            
-            // Navegar para dashboard de análise
-            navigation.navigate('InvoiceAnalysisDashboard', { analysis });
-          } else {
-            const errorText = await testResponse.text();
-            Alert.alert(
-              'Erro no Upload',
-              `Não foi possível processar a fatura.\nCódigo: ${testResponse.status}\nDetalhes: ${errorText}`
-            );
-          }
+          handleUploadResult(testResponse.status, await testResponse.text());
 
         } catch (webError: any) {
           console.error('Erro no upload web:', webError);
@@ -217,23 +228,8 @@ export default function Invoices({ onLogout, navigation }: any) {
             }
           );
 
-          console.log('Upload result mobile teste:', testUploadResult.status, testUploadResult.body);
-
-          if (testUploadResult.status === 200) {
-            const suggestions = JSON.parse(testUploadResult.body);
-            console.log('✅ Dados do teste mobile:', suggestions);
-            
-            // Converter para formato de análise
-            const analysis = convertToAnalysis(suggestions);
-            
-            // Navegar para dashboard de análise
-            navigation.navigate('InvoiceAnalysisDashboard', { analysis });
-          } else {
-            Alert.alert(
-              'Erro no Upload',
-              `Não foi possível processar a fatura.\nCódigo: ${testUploadResult.status}\nDetalhes: ${testUploadResult.body}`
-            );
-          }
+          console.log('Upload result mobile teste:', testUploadResult.status);
+          handleUploadResult(testUploadResult.status, testUploadResult.body);
 
         } catch (mobileError: any) {
           console.error('Erro com FileSystem mobile:', mobileError);
