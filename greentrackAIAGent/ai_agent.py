@@ -5,6 +5,10 @@ import openai
 from PIL import Image
 import pytesseract
 import io
+import json
+import re
+import uuid
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -56,7 +60,6 @@ def check_invoice_readability(text):
         return False, f"Texto não parece ser de fatura de eletricidade (palavras encontradas: {found_keywords})"
     
     # Verificar se há números suficientes (valores, consumo, etc)
-    import re
     numbers = re.findall(r'\d+', text)
     if len(numbers) < 5:
         return False, "Poucos números detectados no texto"
@@ -108,6 +111,36 @@ def test_analysis():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+REQUIRED_FIELDS = ['period', 'consumptionKwh', 'totalAmount', 'tariffType', 'contractedPower']
+SUPPORTED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.tiff', '.bmp'}
+
+
+def error_response(status_code, processing_status, message):
+    """Explicit failure. Never return bill numbers we did not read from the bill."""
+    return jsonify({
+        "processingStatus": processing_status,
+        "error": message,
+        "suggestions": [],
+    }), status_code
+
+
+def format_suggestions(suggestions):
+    formatted_list = []
+    for suggestion in suggestions:
+        if isinstance(suggestion, dict):
+            category = suggestion.get('category', '')
+            title = suggestion.get('title', '')
+            description = suggestion.get('description', '')
+            saving = suggestion.get('potentialSaving', 0) or 0
+            formatted = f"[{category.upper()}] {title}: {description}"
+            if saving > 0:
+                formatted += f" (Poupança: €{saving:.2f}/mês)"
+            formatted_list.append(formatted)
+        else:
+            formatted_list.append(str(suggestion))
+    return formatted_list
+
+
 @app.route("/ai/suggestions", methods=["POST"])
 def get_energy_suggestions():
     if 'file' not in request.files:
@@ -117,22 +150,20 @@ def get_energy_suggestions():
     if file.filename == "":
         return jsonify({"error": "Nome do arquivo vazio"}), 400
 
-    try:
-        # Criar diretório uploads se não existir
-        os.makedirs("uploads", exist_ok=True)
-        file_path = os.path.join("uploads", file.filename)
-        file.save(file_path)
+    file_extension = os.path.splitext(secure_filename(file.filename))[1].lower()
+    if file_extension not in SUPPORTED_EXTENSIONS:
+        return jsonify({"error": "Formato de arquivo não suportado. Use PDF ou imagem."}), 400
 
-        # Extrair texto baseado no tipo de arquivo
-        invoice_text = ""
-        file_extension = os.path.splitext(file.filename)[1].lower()
-        
+    # Never trust the client's filename for the path on disk.
+    os.makedirs("uploads", exist_ok=True)
+    file_path = os.path.join("uploads", f"{uuid.uuid4().hex}{file_extension}")
+    file.save(file_path)
+
+    try:
         if file_extension == '.pdf':
             invoice_text = extract_text_from_pdf(file_path)
-        elif file_extension in ['.jpg', '.jpeg', '.png', '.tiff', '.bmp']:
-            invoice_text = extract_text_from_image(file_path)
         else:
-            return jsonify({"error": "Formato de arquivo não suportado. Use PDF ou imagem."}), 400
+            invoice_text = extract_text_from_image(file_path)
 
         if not invoice_text.strip():
             return jsonify({
@@ -143,7 +174,7 @@ def get_energy_suggestions():
         # 🔍 Verificar se a fatura é legível
         is_readable, readability_message = check_invoice_readability(invoice_text)
         print(f"Verificação de legibilidade: {readability_message}")
-        
+
         if not is_readable:
             return jsonify({
                 "suggestions": [
@@ -155,7 +186,6 @@ def get_energy_suggestions():
                 "readabilityCheck": readability_message
             }), 200
 
-        # Prompt otimizado para extração de dados específicos
         prompt = f"""
 Extrair dados específicos da fatura de eletricidade em formato JSON.
 
@@ -201,116 +231,52 @@ TEXTO DA FATURA:
 IMPORTANTE: Responder APENAS com JSON válido. Se não conseguir extrair algum dado, usar valor padrão (0 para números, "desconhecido" para strings).
 """
 
-        # Chamada à OpenAI
-        response = openai.chat.completions.create(
-            model="gpt-3.5-turbo",  # Modelo mais estável
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,  # Mais baixo para dados estruturados
-            max_tokens=1200
-        )
+        try:
+            response = openai.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,  # Mais baixo para dados estruturados
+                max_tokens=1200
+            )
+            ai_response = response.choices[0].message.content
+        except Exception as e:  # network, auth, rate limit, timeout...
+            print(f"Erro na chamada à OpenAI: {e}")
+            return error_response(502, "error_ai_unavailable",
+                                  "O serviço de análise não está disponível. Tente novamente mais tarde.")
 
-        ai_response = response.choices[0].message.content
         print(f"Resposta da OpenAI: {ai_response}")
-        
-        try:
-            # Tentar parsear como JSON
-            import json
-            analysis_data = json.loads(ai_response)
-            
-            # Validar campos obrigatórios
-            required_fields = ['period', 'consumptionKwh', 'totalAmount', 'tariffType', 'contractedPower']
-            for field in required_fields:
-                if field not in analysis_data:
-                    print(f"Campo obrigatório ausente: {field}")
-                    raise ValueError(f"Campo {field} não encontrado")
-            
-            # Calcular média diária se não fornecida
-            if 'averageDaily' not in analysis_data:
-                analysis_data['averageDaily'] = analysis_data['consumptionKwh'] / 30
-            
-            # Garantir que suggestions existe
-            if 'suggestions' not in analysis_data:
-                analysis_data['suggestions'] = []
-            
-            # Transformar para o formato esperado pelo backend
-            suggestions_list = []
-            for suggestion in analysis_data.get('suggestions', []):
-                if isinstance(suggestion, dict):
-                    title = suggestion.get('title', '')
-                    description = suggestion.get('description', '')
-                    category = suggestion.get('category', '')
-                    priority = suggestion.get('priority', 'media')
-                    saving = suggestion.get('potentialSaving', 0)
-                    
-                    # Formatar sugestão como string para compatibilidade
-                    formatted = f"[{category.upper()}] {title}: {description}"
-                    if saving > 0:
-                        formatted += f" (Poupança: €{saving:.2f}/mês)"
-                    suggestions_list.append(formatted)
-                else:
-                    suggestions_list.append(str(suggestion))
-            
-            result = {
-                "suggestions": suggestions_list,
-                "analysis_data": analysis_data  # Dados estruturados para o frontend
-            }
-            
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"Erro ao parsear JSON da OpenAI: {e}")
-            print(f"Resposta recebida: {ai_response}")
-            
-            # Fallback: dividir as sugestões em lista
-            suggestions_list = [s.strip() for s in ai_response.split('\n') if s.strip() and not s.strip().startswith('#')]
-            if not suggestions_list:
-                suggestions_list = [ai_response]  # Usar resposta completa como única sugestão
-            
-            result = {
-                "suggestions": suggestions_list,
-                "analysis_data": {
-                    "period": "Período não identificado",
-                    "consumptionKwh": 0,
-                    "totalAmount": 0,
-                    "averageDaily": 0,
-                    "tariffType": "desconhecido",
-                    "contractedPower": 0,
-                    "suggestions": [],
-                    "insights": {}
-                }
-            }
-        
-        # Limpar o arquivo após processamento
-        try:
-            os.remove(file_path)
-        except:
-            pass
 
-        return jsonify(result)
+        try:
+            analysis_data = json.loads(ai_response)
+            if not isinstance(analysis_data, dict):
+                raise ValueError("Resposta não é um objeto JSON")
+            missing = [field for field in REQUIRED_FIELDS if field not in analysis_data]
+            if missing:
+                raise ValueError(f"Campos obrigatórios em falta: {missing}")
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"Resposta inválida da OpenAI: {e}")
+            return error_response(502, "error_ai_invalid_response",
+                                  "Não foi possível analisar esta fatura. Tente novamente ou use outro ficheiro.")
+
+        if 'averageDaily' not in analysis_data:
+            analysis_data['averageDaily'] = analysis_data['consumptionKwh'] / 30
+        analysis_data.setdefault('suggestions', [])
+
+        return jsonify({
+            "processingStatus": "success",
+            "suggestions": format_suggestions(analysis_data['suggestions']),
+            "analysis_data": analysis_data,
+        })
 
     except Exception as e:
         print(f"Erro no processamento: {e}")
-        # Retornar sugestões padrão em caso de erro
-        return jsonify({
-            "suggestions": [
-                "💡 Substitua lâmpadas incandescentes por LED para poupar até 80% na iluminação",
-                "🏠 Verifique o isolamento da sua casa para reduzir gastos com aquecimento/arrefecimento",
-                "⚡ Considere mudar para tarifa bi-horária se tem flexibilidade nos horários de consumo",
-                "🔌 Desligue aparelhos em standby para evitar consumos fantasma",
-                "💰 Compare fornecedores de energia para encontrar tarifas mais competitivas"
-            ],
-            "analysis_data": {
-                "period": "Período não identificado",
-                "consumptionKwh": 250,
-                "totalAmount": 85.50,
-                "averageDaily": 8.3,
-                "tariffType": "desconhecido",
-                "contractedPower": 6.9,
-                "suggestions": [],
-                "insights": {
-                    "peakConsumptionHours": "Dados não disponíveis",
-                    "highestCosts": "Não foi possível identificar"
-                }
-            }
-        }), 200
+        return error_response(500, "error_internal", "Erro interno ao processar a fatura.")
+
+    finally:
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
 
 @app.route("/health", methods=["GET"])
 def health_check():
