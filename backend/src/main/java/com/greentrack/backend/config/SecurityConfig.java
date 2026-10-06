@@ -37,8 +37,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/invoice/**").permitAll() // Endpoints antigos
-                .requestMatchers("/api/invoices/**").permitAll() // Novos endpoints com 's'
+                // Invoice uploads carry personal billing data: authenticated users only.
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session

@@ -183,6 +183,14 @@ export default function Invoices({ onLogout, navigation }: any) {
 
       console.log('Plataforma detectada:', Platform.OS);
 
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        Alert.alert('Sessão expirada', 'Inicie sessão novamente para enviar faturas.');
+        setUploading(false);
+        return;
+      }
+      const authHeaders = { Authorization: `Bearer ${token}` };
+
       // Função para upload dependendo da plataforma
       if (Platform.OS === 'web') {
         // Para web, usar fetch com FormData tradicional
@@ -201,6 +209,7 @@ export default function Invoices({ onLogout, navigation }: any) {
           // Ir direto para o endpoint de teste, pulando debug
           const testResponse = await fetch(`${API_URL}/api/invoices/upload-test`, {
             method: 'POST',
+            headers: authHeaders,
             body: formData,
           });
 
@@ -224,6 +233,7 @@ export default function Invoices({ onLogout, navigation }: any) {
             {
               fieldName: 'file',
               httpMethod: 'POST',
+              headers: authHeaders,
               uploadType: FileSystem.FileSystemUploadType.MULTIPART,
             }
           );
