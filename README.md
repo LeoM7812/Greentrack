@@ -89,6 +89,16 @@ npm install
 EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:8080 npx expo start
 ```
 
+## Tests
+
+The AI service has regression tests for its failure modes (AI unavailable, invalid model output, unsafe filenames). They run on every push via GitHub Actions.
+
+```bash
+cd greentrackAIAGent
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -q tests
+```
+
 ## Roadmap
 
 - Gas and water bills, for a complete view of household consumption
