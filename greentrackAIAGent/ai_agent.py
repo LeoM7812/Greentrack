@@ -133,6 +133,48 @@ def test_analysis():
         return jsonify({"error": str(e)}), 500
 
 REQUIRED_FIELDS = ['period', 'consumptionKwh', 'totalAmount', 'tariffType', 'contractedPower']
+
+# Modelo da OpenAI: muda-se sem tocar no código (OPENAI_MODEL no .env).
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
+
+# Saída estruturada: a OpenAI só pode responder com um JSON neste formato.
+NUMBER_OR_NULL = {"type": ["number", "null"]}
+STRING_OR_NULL = {"type": ["string", "null"]}
+BILL_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["period", "consumptionKwh", "totalAmount", "tariffType", "contractedPower",
+                 "averageDaily", "suggestions", "insights"],
+    "properties": {
+        "period": {"type": "string"},
+        "consumptionKwh": {"type": "number"},
+        "totalAmount": {"type": "number"},
+        "tariffType": {"type": "string", "enum": ["simples", "bi-horaria", "tri-horaria", "desconhecido"]},
+        "contractedPower": {"type": "number"},
+        "averageDaily": NUMBER_OR_NULL,
+        "suggestions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["category", "title", "description", "priority", "potentialSaving"],
+                "properties": {
+                    "category": {"type": "string", "enum": ["tarifa", "consumo", "sustentabilidade", "fornecedor"]},
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "priority": {"type": "string", "enum": ["alta", "media", "baixa"]},
+                    "potentialSaving": NUMBER_OR_NULL,
+                },
+            },
+        },
+        "insights": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["peakConsumptionHours", "highestCosts"],
+            "properties": {"peakConsumptionHours": STRING_OR_NULL, "highestCosts": STRING_OR_NULL},
+        },
+    },
+}
 SUPPORTED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.tiff', '.bmp'}
 
 
@@ -208,56 +250,32 @@ def get_energy_suggestions():
             }), 200
 
         prompt = f"""
-Extrair dados específicos da fatura de eletricidade em formato JSON.
+Extrair os dados desta fatura de eletricidade portuguesa.
 
-INSTRUÇÕES:
-1. Analisar o texto da fatura abaixo
-2. Extrair os dados solicitados
-3. Retornar APENAS um JSON válido (sem texto adicional)
-
-DADOS A EXTRAIR:
 - period: período da fatura (ex: "Janeiro 2024", "Jan/2024")
-- consumptionKwh: consumo total em kWh (apenas número)
-- totalAmount: valor total em euros (apenas número)
+- consumptionKwh: consumo total em kWh
+- totalAmount: valor total a pagar em euros
 - tariffType: "simples", "bi-horaria", "tri-horaria" ou "desconhecido"
-- contractedPower: potência contratada em kVA (número)
-- averageDaily: consumo médio diário (número)
+- contractedPower: potência contratada em kVA
+- averageDaily: consumo médio diário em kWh, se a fatura o indicar; senão null
+- suggestions: dicas concretas para este cliente poupar, com poupança mensal estimada em euros quando for possível estimar
+- insights: horas de maior consumo e o que mais pesa na fatura, se a fatura o indicar; senão null
 
-EXEMPLO DO JSON A RETORNAR:
-{{
-  "period": "Janeiro 2024",
-  "consumptionKwh": 250.5,
-  "totalAmount": 89.47,
-  "tariffType": "simples",
-  "contractedPower": 6.9,
-  "averageDaily": 8.3,
-  "suggestions": [
-    {{
-      "category": "tarifa",
-      "title": "Considere tarifa bi-horária",
-      "description": "Com o seu perfil de consumo, uma tarifa bi-horária pode resultar em poupanças significativas",
-      "priority": "alta",
-      "potentialSaving": 15.0
-    }}
-  ],
-  "insights": {{
-    "peakConsumptionHours": "Entre 18h-22h",
-    "highestCosts": "Taxa de acesso às redes"
-  }}
-}}
+Usar só valores que estão na fatura. Se um número não estiver na fatura, usar 0.
 
 TEXTO DA FATURA:
 {redact_personal_data(invoice_text)}
-
-IMPORTANTE: Responder APENAS com JSON válido. Se não conseguir extrair algum dado, usar valor padrão (0 para números, "desconhecido" para strings).
 """
 
         try:
             response = openai.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,  # Mais baixo para dados estruturados
-                max_tokens=1200
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": "fatura_eletricidade", "strict": True, "schema": BILL_SCHEMA},
+                },
+                max_completion_tokens=4000,  # inclui os tokens de raciocínio dos modelos recentes
             )
             ai_response = response.choices[0].message.content
         except Exception as e:  # network, auth, rate limit, timeout...
@@ -266,6 +284,8 @@ IMPORTANTE: Responder APENAS com JSON válido. Se não conseguir extrair algum d
                                   "O serviço de análise não está disponível. Tente novamente mais tarde.")
 
         try:
+            if not ai_response:  # recusa ou resposta cortada
+                raise ValueError("Resposta vazia")
             analysis_data = json.loads(ai_response)
             if not isinstance(analysis_data, dict):
                 raise ValueError("Resposta não é um objeto JSON")
@@ -277,7 +297,7 @@ IMPORTANTE: Responder APENAS com JSON válido. Se não conseguir extrair algum d
             return error_response(502, "error_ai_invalid_response",
                                   "Não foi possível analisar esta fatura. Tente novamente ou use outro ficheiro.")
 
-        if 'averageDaily' not in analysis_data:
+        if not analysis_data.get('averageDaily'):
             analysis_data['averageDaily'] = analysis_data['consumptionKwh'] / 30
         analysis_data.setdefault('suggestions', [])
 
