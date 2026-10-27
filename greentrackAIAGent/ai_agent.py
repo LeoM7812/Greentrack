@@ -66,6 +66,27 @@ def check_invoice_readability(text):
     
     return True, f"Fatura parece legível (encontradas {len(found_keywords)} palavras-chave)"
 
+# 🔒 Dados pessoais nunca saem do servidor: a IA só precisa de consumos, valores e tarifa.
+PERSONAL_DATA_PATTERNS = [
+    # Código do ponto de entrega (CPE): PT + 16 dígitos + 2 letras
+    (re.compile(r'\bPT\s?(?:\d\s?){16}[A-Z]{2}\b'), '[CPE]'),
+    (re.compile(r'\bPT\d{2}(?:\s?\d){21}\b'), '[IBAN]'),
+    (re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+'), '[EMAIL]'),
+    # NIF, telefone, n.º de cliente ou de contrato: 9 dígitos soltos (não apanha valores nem kWh)
+    (re.compile(r'(?<![\d.,])(?:\+351\s?)?\d{3}\s?\d{3}\s?\d{3}(?![\d.,])'), '[NÚMERO]'),
+    # Código postal e localidade
+    (re.compile(r'\b\d{4}-\d{3}\b.*'), '[CÓDIGO POSTAL]'),
+    # Linhas com nome ou morada do cliente
+    (re.compile(r'(?im)^(\s*(?:nome|cliente|titular|morada|endere[cç]o)\b[^:\n]*:?).*$'), r'\1 [REMOVIDO]'),
+]
+
+
+def redact_personal_data(text):
+    for pattern, replacement in PERSONAL_DATA_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 @app.route("/ai/test-analysis", methods=["GET"])
 def test_analysis():
     """Endpoint de teste que retorna dados estruturados mock"""
@@ -226,7 +247,7 @@ EXEMPLO DO JSON A RETORNAR:
 }}
 
 TEXTO DA FATURA:
-{invoice_text}
+{redact_personal_data(invoice_text)}
 
 IMPORTANTE: Responder APENAS com JSON válido. Se não conseguir extrair algum dado, usar valor padrão (0 para números, "desconhecido" para strings).
 """
@@ -243,8 +264,6 @@ IMPORTANTE: Responder APENAS com JSON válido. Se não conseguir extrair algum d
             print(f"Erro na chamada à OpenAI: {e}")
             return error_response(502, "error_ai_unavailable",
                                   "O serviço de análise não está disponível. Tente novamente mais tarde.")
-
-        print(f"Resposta da OpenAI: {ai_response}")
 
         try:
             analysis_data = json.loads(ai_response)
