@@ -63,7 +63,7 @@ We ran a field test in Coimbra, talking directly with residents to measure the a
 
 ## Running locally
 
-**Prerequisites:** Java 17+, Node.js 18+, Python 3.8+, PostgreSQL, Tesseract OCR.
+**Prerequisites:** Java 17+, Node.js 18+, Python 3.11+, PostgreSQL, Tesseract OCR.
 
 Each service is configured through environment variables. See the `.env.example` file in each folder.
 

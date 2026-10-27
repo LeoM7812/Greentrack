@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF (o nome "fitz" está obsoleto)
 import os
 import openai
 from PIL import Image
