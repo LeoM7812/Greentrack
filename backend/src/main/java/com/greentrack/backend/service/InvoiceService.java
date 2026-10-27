@@ -5,6 +5,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
@@ -20,6 +21,10 @@ import java.util.ArrayList;
 public class InvoiceService {
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    // Endereço do serviço de IA: AI_SERVICE_URL no .env (por omissão, na mesma máquina).
+    @Value("${ai.service.url:http://localhost:5000}")
+    private String aiServiceUrl;
 
     public SuggestionsDTO processInvoice(MultipartFile file) throws java.io.IOException {
         try {
@@ -44,7 +49,7 @@ public class InvoiceService {
             ResponseEntity<String> response;
             try {
                 response = restTemplate.postForEntity(
-                        "http://localhost:5000/ai/suggestions",
+                        aiServiceUrl + "/ai/suggestions",
                         requestEntity,
                         String.class);
             } catch (HttpStatusCodeException httpError) {
