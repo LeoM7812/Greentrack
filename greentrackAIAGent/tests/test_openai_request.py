@@ -90,3 +90,15 @@ def test_daily_average_uses_the_bills_own_figure_without_dates():
 def test_daily_average_ignores_impossible_periods():
     assert ai_agent.daily_average({"consumptionKwh": 300, "billingDays": 0}) == 10.0
     assert ai_agent.daily_average({"consumptionKwh": 300, "billingDays": 5000}) == 10.0
+
+
+def test_ai_savings_in_euros_are_never_shown(monkeypatch, tmp_path):
+    reply = json.loads(GOOD)
+    reply["suggestions"] = [{"category": "fornecedor", "title": "Mude de comercializador", "description": "Mais barato",
+                             "priority": "alta", "potentialSaving": 15.0}]
+    resp, calls = _post(monkeypatch, tmp_path, json.dumps(reply))
+
+    body = resp.get_json()
+    assert body["analysis_data"]["suggestions"][0]["potentialSaving"] is None
+    assert "Poupança" not in " ".join(body["suggestions"])
+    assert "potentialSaving sempre null" in calls[0]["messages"][0]["content"]
