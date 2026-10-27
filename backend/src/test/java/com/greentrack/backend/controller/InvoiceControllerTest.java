@@ -21,6 +21,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.bind.annotation.PostMapping;
 
 import com.greentrack.backend.dto.SuggestionsDTO;
+import com.greentrack.backend.model.Invoice;
 import com.greentrack.backend.model.User;
 import com.greentrack.backend.repository.InvoiceRepository;
 import com.greentrack.backend.service.InvoiceService;
@@ -118,5 +119,38 @@ class InvoiceControllerTest {
         controller.uploadTest(bill, new User());
 
         verify(invoiceRepository, never()).save(any());
+    }
+
+    @Test
+    void comparesWithTheUsersPreviousBill() throws Exception {
+        User user = new User();
+        Invoice previous = new Invoice();
+        previous.setConsumptionKwh(200.0);
+        previous.setTotalAmount(50.0);
+        when(invoiceRepository.findByUserOrderByUploadedAtDesc(user)).thenReturn(List.of(previous));
+        SuggestionsDTO ok = withStatus("success");
+        ok.setConsumptionKwh(245.0);
+        ok.setTotalAmount(45.0);
+        when(invoiceService.processInvoice(any())).thenReturn(ok);
+
+        SuggestionsDTO body = controller.uploadTest(bill, user).getBody();
+
+        assertEquals(22.5, body.getComparisonPreviousMonth().consumptionDifference());
+        assertEquals(-10.0, body.getComparisonPreviousMonth().amountDifference());
+    }
+
+    @Test
+    void firstBillHasNoComparison() throws Exception {
+        User user = new User();
+        when(invoiceRepository.findByUserOrderByUploadedAtDesc(user)).thenReturn(List.of());
+        when(invoiceService.processInvoice(any())).thenReturn(withStatus("success"));
+
+        assertNull(controller.uploadTest(bill, user).getBody().getComparisonPreviousMonth());
+    }
+
+    @Test
+    void percentChangeSkipsAZeroBaseline() {
+        assertNull(InvoiceController.percentChange(0, 100));
+        assertEquals(0.0, InvoiceController.percentChange(80, 80));
     }
 }

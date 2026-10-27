@@ -87,7 +87,7 @@ export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
             <View style={styles.summaryCard}>
               <Text style={styles.summaryValue}>{formatCurrency(analysis.totalAmount)}</Text>
               <Text style={styles.summaryLabel}>Valor Total</Text>
-              {analysis.comparisonPreviousMonth?.amountDifference && (
+              {analysis.comparisonPreviousMonth?.amountDifference != null && (
                 <Text style={[
                   styles.summaryChange,
                   { color: analysis.comparisonPreviousMonth.amountDifference > 0 ? '#F44336' : '#4CAF50' }
@@ -100,7 +100,7 @@ export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
             <View style={styles.summaryCard}>
               <Text style={styles.summaryValue}>{formatKwh(analysis.consumptionKwh)}</Text>
               <Text style={styles.summaryLabel}>Consumo</Text>
-              {analysis.comparisonPreviousMonth?.consumptionDifference && (
+              {analysis.comparisonPreviousMonth?.consumptionDifference != null && (
                 <Text style={[
                   styles.summaryChange,
                   { color: analysis.comparisonPreviousMonth.consumptionDifference > 0 ? '#F44336' : '#4CAF50' }

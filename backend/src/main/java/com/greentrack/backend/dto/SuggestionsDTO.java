@@ -18,6 +18,7 @@ public class SuggestionsDTO {
     private String processingStatus;
     private String readabilityCheck; // Nova propriedade para verificação de legibilidade
     private String error; // Mensagem para o utilizador quando a análise falha
+    private Comparison comparisonPreviousMonth; // Só quando há uma fatura anterior
 
     // Getters and Setters
 
@@ -118,6 +119,14 @@ public class SuggestionsDTO {
     }
 
     /** True when the AI step failed and no bill data may be shown. */
+    public Comparison getComparisonPreviousMonth() {
+        return comparisonPreviousMonth;
+    }
+
+    public void setComparisonPreviousMonth(Comparison comparisonPreviousMonth) {
+        this.comparisonPreviousMonth = comparisonPreviousMonth;
+    }
+
     public boolean analysisFailed() {
         return processingStatus != null && processingStatus.startsWith("error");
     }
