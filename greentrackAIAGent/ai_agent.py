@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF (o nome "fitz" está obsoleto)
 import os
 import openai
 from PIL import Image
@@ -144,13 +144,14 @@ BILL_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": ["period", "consumptionKwh", "totalAmount", "tariffType", "contractedPower",
-                 "averageDaily", "suggestions", "insights"],
+                 "billingDays", "averageDaily", "suggestions", "insights"],
     "properties": {
         "period": {"type": "string"},
         "consumptionKwh": {"type": "number"},
         "totalAmount": {"type": "number"},
         "tariffType": {"type": "string", "enum": ["simples", "bi-horaria", "tri-horaria", "desconhecido"]},
         "contractedPower": {"type": "number"},
+        "billingDays": {"type": ["integer", "null"]},
         "averageDaily": NUMBER_OR_NULL,
         "suggestions": {
             "type": "array",
@@ -185,6 +186,17 @@ def error_response(status_code, processing_status, message):
         "error": message,
         "suggestions": [],
     }), status_code
+
+
+def daily_average(data):
+    """kWh por dia no período real da fatura; 30 dias só se a fatura não tiver datas nem média."""
+    kwh = data.get('consumptionKwh') or 0
+    days = data.get('billingDays')
+    if isinstance(days, int) and 0 < days <= 366:
+        return round(kwh / days, 2)
+    if data.get('averageDaily'):
+        return data['averageDaily']
+    return round(kwh / 30, 2)
 
 
 def format_suggestions(suggestions):
@@ -257,6 +269,7 @@ Extrair os dados desta fatura de eletricidade portuguesa.
 - totalAmount: valor total a pagar em euros
 - tariffType: "simples", "bi-horaria", "tri-horaria" ou "desconhecido"
 - contractedPower: potência contratada em kVA
+- billingDays: número de dias do período de faturação (ex: de 01/01 a 31/01 são 31 dias); null se não houver datas
 - averageDaily: consumo médio diário em kWh, se a fatura o indicar; senão null
 - suggestions: dicas concretas para este cliente poupar, com poupança mensal estimada em euros quando for possível estimar
 - insights: horas de maior consumo e o que mais pesa na fatura, se a fatura o indicar; senão null
@@ -297,8 +310,7 @@ TEXTO DA FATURA:
             return error_response(502, "error_ai_invalid_response",
                                   "Não foi possível analisar esta fatura. Tente novamente ou use outro ficheiro.")
 
-        if not analysis_data.get('averageDaily'):
-            analysis_data['averageDaily'] = analysis_data['consumptionKwh'] / 30
+        analysis_data['averageDaily'] = daily_average(analysis_data)
         analysis_data.setdefault('suggestions', [])
 
         return jsonify({
