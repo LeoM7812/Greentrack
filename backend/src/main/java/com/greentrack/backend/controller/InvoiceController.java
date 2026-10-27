@@ -8,6 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
+import com.greentrack.backend.dto.Comparison;
 import com.greentrack.backend.dto.InvoiceSummary;
 import com.greentrack.backend.dto.SuggestionsDTO;
 import com.greentrack.backend.model.Invoice;
@@ -73,6 +74,10 @@ public class InvoiceController {
         if (result == null || user == null || !"success".equals(result.getProcessingStatus())) {
             return result;
         }
+        invoiceRepository.findByUserOrderByUploadedAtDesc(user).stream().findFirst()
+                .ifPresent(previous -> result.setComparisonPreviousMonth(new Comparison(
+                        percentChange(previous.getConsumptionKwh(), result.getConsumptionKwh()),
+                        percentChange(previous.getTotalAmount(), result.getTotalAmount()))));
         Invoice invoice = new Invoice();
         invoice.setUser(user);
         invoice.setPeriod(result.getPeriod());
@@ -84,6 +89,14 @@ public class InvoiceController {
         invoice.setUploadedAt(LocalDateTime.now());
         invoiceRepository.save(invoice);
         return result;
+    }
+
+    /** Percent change from before to now, one decimal; null when there's nothing to compare. */
+    static Double percentChange(double before, double now) {
+        if (before <= 0) {
+            return null;
+        }
+        return Math.round((now - before) / before * 1000) / 10.0;
     }
 
     /**

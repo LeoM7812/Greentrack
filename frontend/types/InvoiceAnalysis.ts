@@ -9,8 +9,8 @@ export interface InvoiceAnalysis {
   
   // Análise comparativa
   comparisonPreviousMonth?: {
-    consumptionDifference: number; // % diferença
-    amountDifference: number; // % diferença
+    consumptionDifference: number | null; // % diferença (null sem fatura anterior com valor)
+    amountDifference: number | null; // % diferença
   };
   
   // Sugestões categorizadas
