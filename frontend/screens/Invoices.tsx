@@ -81,6 +81,7 @@ export default function Invoices({ onLogout, navigation }: any) {
     }
 
     if (status === 200 && body?.processingStatus === 'success') {
+      loadInvoices();
       navigation.navigate('InvoiceAnalysisDashboard', { analysis: convertToAnalysis(body) });
       return;
     }
@@ -97,54 +98,24 @@ export default function Invoices({ onLogout, navigation }: any) {
     );
   };
 
-  // Mock data para demonstração
-  const mockInvoices = [
-    {
-      id: 1,
-      date: '2024-12-15',
-      amount: 89.47,
-      consumption: 245,
-      status: 'Paga',
-      period: 'Dezembro 2024',
-      company: 'EDP Comercial'
-    },
-    {
-      id: 2,
-      date: '2024-11-15',
-      amount: 92.35,
-      consumption: 267,
-      status: 'Paga',
-      period: 'Novembro 2024',
-      company: 'EDP Comercial'
-    },
-    {
-      id: 3,
-      date: '2024-10-15',
-      amount: 78.92,
-      consumption: 198,
-      status: 'Paga',
-      period: 'Outubro 2024',
-      company: 'EDP Comercial'
-    },
-    {
-      id: 4,
-      date: '2024-09-15',
-      amount: 105.68,
-      consumption: 289,
-      status: 'Pendente',
-      period: 'Setembro 2024',
-      company: 'EDP Comercial'
+  // Faturas reais do utilizador, guardadas pelo backend a cada análise bem-sucedida.
+  const loadInvoices = async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/invoices`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      setInvoices(response.ok ? await response.json() : []);
+    } catch (error) {
+      console.error('Erro ao carregar faturas:', error);
+      setInvoices([]);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   useEffect(() => {
-    // Simular carregamento
-    const loadInvoices = setTimeout(() => {
-      setInvoices(mockInvoices);
-      setLoading(false);
-    }, 1500);
-
-    return () => clearTimeout(loadInvoices);
+    loadInvoices();
   }, []);
 
   const handleUploadInvoice = async () => {
@@ -258,26 +229,20 @@ export default function Invoices({ onLogout, navigation }: any) {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Paga':
-        return '#4CAF50';
-      case 'Pendente':
-        return '#FF9800';
-      case 'Vencida':
-        return '#F44336';
-      default:
-        return '#6C757D';
-    }
-  };
-
   const handleInvoicePress = (invoice: any) => {
     Alert.alert(
       `Fatura ${invoice.period}`,
-      `Valor: €${invoice.amount}\nConsumo: ${invoice.consumption} kWh\nEmpresa: ${invoice.company}\nStatus: ${invoice.status}`,
+      `Valor: €${invoice.totalAmount.toFixed(2)}
+Consumo: ${invoice.consumptionKwh} kWh
+Tarifa: ${invoice.tariffType}`,
       [{ text: 'OK' }]
     );
   };
+
+  // Resumo calculado a partir das faturas reais.
+  const totalAmount = invoices.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
+  const totalConsumption = invoices.reduce((sum, i) => sum + (i.consumptionKwh || 0), 0);
+  const monthlyAverage = invoices.length ? totalAmount / invoices.length : 0;
 
   if (loading) {
     return (
@@ -321,16 +286,16 @@ export default function Invoices({ onLogout, navigation }: any) {
           {/* Summary Cards */}
           <View style={styles.summaryContainer}>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>€366.42</Text>
-              <Text style={styles.summaryLabel}>Total Anual</Text>
+              <Text style={styles.summaryValue}>€{totalAmount.toFixed(2)}</Text>
+              <Text style={styles.summaryLabel}>Total</Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>999 kWh</Text>
+              <Text style={styles.summaryValue}>{Math.round(totalConsumption)} kWh</Text>
               <Text style={styles.summaryLabel}>Consumo Total</Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryValue}>€91.61</Text>
-              <Text style={styles.summaryLabel}>Média Mensal</Text>
+              <Text style={styles.summaryValue}>€{monthlyAverage.toFixed(2)}</Text>
+              <Text style={styles.summaryLabel}>Média por fatura</Text>
             </View>
           </View>
 
@@ -338,6 +303,9 @@ export default function Invoices({ onLogout, navigation }: any) {
           <View style={styles.invoicesContainer}>
             <Text style={styles.invoicesTitle}>Faturas Recentes</Text>
             
+            {invoices.length === 0 && (
+              <Text style={styles.invoiceCompany}>Ainda não há faturas. Carregue a primeira para ver a análise.</Text>
+            )}
             {invoices.map((invoice: any) => (
               <TouchableOpacity
                 key={invoice.id}
@@ -350,24 +318,21 @@ export default function Invoices({ onLogout, navigation }: any) {
                   </View>
                   <View style={styles.invoiceInfo}>
                     <Text style={styles.invoicePeriod}>{invoice.period}</Text>
-                    <Text style={styles.invoiceCompany}>{invoice.company}</Text>
+                    <Text style={styles.invoiceCompany}>Tarifa {invoice.tariffType}</Text>
                   </View>
                   <View style={styles.invoiceAmount}>
-                    <Text style={styles.invoicePrice}>€{invoice.amount}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(invoice.status) }]}>
-                      <Text style={styles.statusText}>{invoice.status}</Text>
-                    </View>
+                    <Text style={styles.invoicePrice}>€{invoice.totalAmount.toFixed(2)}</Text>
                   </View>
                 </View>
                 
                 <View style={styles.invoiceDetails}>
                   <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Consumo:</Text>
-                    <Text style={styles.detailValue}>{invoice.consumption} kWh</Text>
+                    <Text style={styles.detailValue}>{invoice.consumptionKwh} kWh</Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Data:</Text>
-                    <Text style={styles.detailValue}>{new Date(invoice.date).toLocaleDateString('pt-PT')}</Text>
+                    <Text style={styles.detailLabel}>Carregada:</Text>
+                    <Text style={styles.detailValue}>{new Date(invoice.uploadedAt).toLocaleDateString('pt-PT')}</Text>
                   </View>
                 </View>
               </TouchableOpacity>

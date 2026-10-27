@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.Arrays;
@@ -18,6 +21,8 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.bind.annotation.PostMapping;
 
 import com.greentrack.backend.dto.SuggestionsDTO;
+import com.greentrack.backend.model.User;
+import com.greentrack.backend.repository.InvoiceRepository;
 import com.greentrack.backend.service.InvoiceService;
 
 /**
@@ -27,7 +32,8 @@ import com.greentrack.backend.service.InvoiceService;
 class InvoiceControllerTest {
 
     private final InvoiceService invoiceService = mock(InvoiceService.class);
-    private final InvoiceController controller = new InvoiceController(invoiceService);
+    private final InvoiceRepository invoiceRepository = mock(InvoiceRepository.class);
+    private final InvoiceController controller = new InvoiceController(invoiceService, invoiceRepository);
     private final MockMultipartFile bill =
             new MockMultipartFile("file", "fatura.pdf", "application/pdf", "%PDF-1.4 dummy".getBytes());
 
@@ -42,7 +48,7 @@ class InvoiceControllerTest {
     void aiUnavailableReturns502WithoutBillData() throws Exception {
         when(invoiceService.processInvoice(any())).thenReturn(withStatus("error_ai_unavailable"));
 
-        ResponseEntity<SuggestionsDTO> response = controller.uploadTest(bill);
+        ResponseEntity<SuggestionsDTO> response = controller.uploadTest(bill, null);
 
         assertEquals(HttpStatus.BAD_GATEWAY, response.getStatusCode());
         assertEquals(0.0, response.getBody().getConsumptionKwh());
@@ -53,14 +59,14 @@ class InvoiceControllerTest {
     void invalidAiResponseReturns502() throws Exception {
         when(invoiceService.processInvoice(any())).thenReturn(withStatus("error_ai_invalid_response"));
 
-        assertEquals(HttpStatus.BAD_GATEWAY, controller.uploadTest(bill).getStatusCode());
+        assertEquals(HttpStatus.BAD_GATEWAY, controller.uploadTest(bill, null).getStatusCode());
     }
 
     @Test
     void readabilityWarningStays200SoTheAppCanShowTips() throws Exception {
         when(invoiceService.processInvoice(any())).thenReturn(withStatus("warning_unreadable"));
 
-        assertEquals(HttpStatus.OK, controller.uploadTest(bill).getStatusCode());
+        assertEquals(HttpStatus.OK, controller.uploadTest(bill, null).getStatusCode());
     }
 
     @Test
@@ -69,7 +75,7 @@ class InvoiceControllerTest {
         ok.setConsumptionKwh(245.0);
         when(invoiceService.processInvoice(any())).thenReturn(ok);
 
-        ResponseEntity<SuggestionsDTO> response = controller.uploadTest(bill);
+        ResponseEntity<SuggestionsDTO> response = controller.uploadTest(bill, null);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(245.0, response.getBody().getConsumptionKwh());
@@ -84,5 +90,33 @@ class InvoiceControllerTest {
                 .collect(Collectors.toSet());
 
         assertEquals(Set.of("/upload", "/upload-test"), paths);
+    }
+
+    @Test
+    void successfulAnalysisIsSavedForTheUser() throws Exception {
+        User user = new User();
+        user.setEmail("ana@example.pt");
+        SuggestionsDTO ok = withStatus("success");
+        ok.setPeriod("Janeiro 2026");
+        ok.setConsumptionKwh(245.0);
+        ok.setTotalAmount(61.3);
+        when(invoiceService.processInvoice(any())).thenReturn(ok);
+
+        controller.uploadTest(bill, user);
+
+        verify(invoiceRepository).save(argThat(i -> i.getUser() == user
+                && "Janeiro 2026".equals(i.getPeriod())
+                && i.getConsumptionKwh() == 245.0
+                && i.getTotalAmount() == 61.3
+                && i.getUploadedAt() != null));
+    }
+
+    @Test
+    void failedAnalysisIsNotSaved() throws Exception {
+        when(invoiceService.processInvoice(any())).thenReturn(withStatus("error_ai_unavailable"));
+
+        controller.uploadTest(bill, new User());
+
+        verify(invoiceRepository, never()).save(any());
     }
 }
