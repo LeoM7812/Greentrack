@@ -271,7 +271,7 @@ Extrair os dados desta fatura de eletricidade portuguesa.
 - contractedPower: potência contratada em kVA
 - billingDays: número de dias do período de faturação (ex: de 01/01 a 31/01 são 31 dias); null se não houver datas
 - averageDaily: consumo médio diário em kWh, se a fatura o indicar; senão null
-- suggestions: dicas concretas para este cliente poupar, com poupança mensal estimada em euros quando for possível estimar
+- suggestions: dicas concretas para este cliente poupar; potentialSaving sempre null (não temos os preços dos comercializadores para calcular poupanças)
 - insights: horas de maior consumo e o que mais pesa na fatura, se a fatura o indicar; senão null
 
 Usar só valores que estão na fatura. Se um número não estiver na fatura, usar 0.
@@ -312,6 +312,10 @@ TEXTO DA FATURA:
 
         analysis_data['averageDaily'] = daily_average(analysis_data)
         analysis_data.setdefault('suggestions', [])
+        # Poupanças em euros só com preços reais: a IA não os tem, por isso nunca mostramos as dela.
+        for suggestion in analysis_data['suggestions']:
+            if isinstance(suggestion, dict):
+                suggestion['potentialSaving'] = None
 
         return jsonify({
             "processingStatus": "success",
