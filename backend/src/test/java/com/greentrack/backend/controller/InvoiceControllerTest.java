@@ -6,12 +6,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.bind.annotation.PostMapping;
 
 import com.greentrack.backend.dto.SuggestionsDTO;
 import com.greentrack.backend.service.InvoiceService;
@@ -69,5 +73,16 @@ class InvoiceControllerTest {
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(245.0, response.getBody().getConsumptionKwh());
+    }
+
+    @Test
+    void onlyTheRealUploadEndpointsExist() {
+        // The old debug endpoints logged request headers (including the login token).
+        Set<String> paths = Arrays.stream(InvoiceController.class.getDeclaredMethods())
+                .filter(m -> m.isAnnotationPresent(PostMapping.class))
+                .flatMap(m -> Arrays.stream(m.getAnnotation(PostMapping.class).value()))
+                .collect(Collectors.toSet());
+
+        assertEquals(Set.of("/upload", "/upload-test"), paths);
     }
 }
