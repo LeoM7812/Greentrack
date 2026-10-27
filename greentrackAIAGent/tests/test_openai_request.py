@@ -76,3 +76,17 @@ def test_null_daily_average_falls_back_to_kwh_over_30(monkeypatch, tmp_path):
     resp, _ = _post(monkeypatch, tmp_path, GOOD)
 
     assert round(resp.get_json()["analysis_data"]["averageDaily"], 2) == round(245 / 30, 2)
+
+
+def test_daily_average_uses_the_real_billing_period():
+    assert ai_agent.daily_average({"consumptionKwh": 245, "billingDays": 31}) == round(245 / 31, 2)
+    assert ai_agent.daily_average({"consumptionKwh": 245, "billingDays": 61}) == round(245 / 61, 2)
+
+
+def test_daily_average_uses_the_bills_own_figure_without_dates():
+    assert ai_agent.daily_average({"consumptionKwh": 245, "billingDays": None, "averageDaily": 8.1}) == 8.1
+
+
+def test_daily_average_ignores_impossible_periods():
+    assert ai_agent.daily_average({"consumptionKwh": 300, "billingDays": 0}) == 10.0
+    assert ai_agent.daily_average({"consumptionKwh": 300, "billingDays": 5000}) == 10.0
