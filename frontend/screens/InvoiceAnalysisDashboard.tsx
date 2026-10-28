@@ -7,8 +7,11 @@ import {
   TouchableOpacity,
   StatusBar,
   Dimensions,
+  Linking,
 } from 'react-native';
 import { InvoiceAnalysis } from '../types/InvoiceAnalysis';
+
+type Offer = NonNullable<InvoiceAnalysis['supplierComparison']>['offers'][number];
 
 const { width } = Dimensions.get('window');
 
@@ -136,6 +139,43 @@ export default function InvoiceAnalysisDashboard({ navigation, route }: any) {
               </View>
             </View>
           </View>
+
+          {/* Comercializadores mais baratos (preços oficiais da ERSE) */}
+          {analysis.supplierComparison && (
+            <View style={styles.detailsContainer}>
+              <Text style={styles.sectionTitle}>Comparar comercializadores</Text>
+              <View style={styles.detailCard}>
+                {analysis.supplierComparison.offers.length === 0 ? (
+                  <Text style={styles.detailLabel}>{analysis.supplierComparison.reason}</Text>
+                ) : (
+                  analysis.supplierComparison.offers.map((offer: Offer, index: number) => (
+                    <TouchableOpacity key={index} style={styles.detailRow} onPress={() => Linking.openURL(offer.link)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailValue}>{offer.supplier}: {offer.offer}</Text>
+                        <Text style={styles.detailLabel}>
+                          {offer.loyaltyMonths ? `Fidelização de ${offer.loyaltyMonths} meses` : 'Sem fidelização'}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={styles.detailValue}>{formatCurrency(offer.estimatedTotal)}</Text>
+                        {offer.saving != null && offer.saving > 0 && (
+                          <Text style={[styles.detailLabel, { color: '#4CAF50' }]}>-{formatCurrency(offer.saving)}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+                {(analysis.supplierComparison.notes || []).map((note: string, index: number) => (
+                  <Text key={index} style={styles.comparisonNote}>{note}</Text>
+                ))}
+                {analysis.supplierComparison.simulator && (
+                  <TouchableOpacity onPress={() => Linking.openURL(analysis.supplierComparison!.simulator!)}>
+                    <Text style={[styles.comparisonNote, { textDecorationLine: 'underline' }]}>Confirmar no simulador da ERSE</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
 
           {/* Insights */}
           {analysis.insights && (
@@ -359,6 +399,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
+  },
+  comparisonNote: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
   },
   detailLabel: {
     fontSize: 14,

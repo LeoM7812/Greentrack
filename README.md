@@ -40,7 +40,7 @@ We ran a field test in Coimbra, talking directly with residents to measure the a
 | 📄 **Bill upload** | PDF or photo, straight from the phone |
 | 🔍 **Smart extraction** | PyMuPDF for digital PDFs, Tesseract OCR for photos and scans |
 | 🤖 **AI analysis** | LLM turns raw bill text into structured data and insights |
-| 💶 **Energy company comparison** | What you pay today vs. other energy companies' prices, with estimated savings |
+| 💶 **Energy company comparison** | The 3 cheapest offers for the same power, tariff and consumption, from the official ERSE price simulator data, with taxes and VAT, vs. what you paid |
 | 📈 **Month-over-month tracking** | Consumption and cost trends between bills |
 | 💡 **Personalised tips** | Actionable recommendations with estimated monthly savings |
 | 🔐 **Accounts** | Registration and login secured with JWT |

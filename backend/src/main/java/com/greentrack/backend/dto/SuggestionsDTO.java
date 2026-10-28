@@ -19,6 +19,8 @@ public class SuggestionsDTO {
     private String readabilityCheck; // Nova propriedade para verificação de legibilidade
     private String error; // Mensagem para o utilizador quando a análise falha
     private Comparison comparisonPreviousMonth; // Só quando há uma fatura anterior
+    // Ofertas mais baratas da ERSE para esta fatura (offers, notes, simulator ou reason), tal como vêm do serviço de IA
+    private com.fasterxml.jackson.databind.JsonNode supplierComparison;
 
     // Getters and Setters
 
@@ -125,6 +127,14 @@ public class SuggestionsDTO {
 
     public void setComparisonPreviousMonth(Comparison comparisonPreviousMonth) {
         this.comparisonPreviousMonth = comparisonPreviousMonth;
+    }
+
+    public com.fasterxml.jackson.databind.JsonNode getSupplierComparison() {
+        return supplierComparison;
+    }
+
+    public void setSupplierComparison(com.fasterxml.jackson.databind.JsonNode supplierComparison) {
+        this.supplierComparison = supplierComparison;
     }
 
     public boolean analysisFailed() {
