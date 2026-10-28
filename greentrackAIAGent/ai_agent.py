@@ -10,6 +10,8 @@ import re
 import uuid
 from werkzeug.utils import secure_filename
 
+import erse
+
 app = Flask(__name__)
 
 # Configura a chave da OpenAI via variável de ambiente
@@ -144,7 +146,7 @@ BILL_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": ["period", "consumptionKwh", "totalAmount", "tariffType", "contractedPower",
-                 "billingDays", "averageDaily", "suggestions", "insights"],
+                 "billingDays", "offPeakKwh", "averageDaily", "suggestions", "insights"],
     "properties": {
         "period": {"type": "string"},
         "consumptionKwh": {"type": "number"},
@@ -152,6 +154,7 @@ BILL_SCHEMA = {
         "tariffType": {"type": "string", "enum": ["simples", "bi-horaria", "tri-horaria", "desconhecido"]},
         "contractedPower": {"type": "number"},
         "billingDays": {"type": ["integer", "null"]},
+        "offPeakKwh": NUMBER_OR_NULL,
         "averageDaily": NUMBER_OR_NULL,
         "suggestions": {
             "type": "array",
@@ -216,6 +219,18 @@ def format_suggestions(suggestions):
     return formatted_list
 
 
+def supplier_comparison(data):
+    """Ofertas mais baratas da ERSE para esta fatura; nunca faz falhar a análise."""
+    try:
+        prices, conditions = erse.load(erse.download())
+        return erse.compare(prices, conditions, data.get('contractedPower'), data.get('tariffType'),
+                            data.get('consumptionKwh'), data.get('billingDays'),
+                            total_paid=data.get('totalAmount'), off_peak_kwh=data.get('offPeakKwh'))
+    except Exception as e:  # ERSE em baixo, ficheiro mudou de formato...
+        print(f"Comparação da ERSE indisponível: {e}")
+        return {"offers": [], "reason": "A comparação com os preços da ERSE não está disponível agora."}
+
+
 @app.route("/ai/suggestions", methods=["POST"])
 def get_energy_suggestions():
     if 'file' not in request.files:
@@ -270,8 +285,9 @@ Extrair os dados desta fatura de eletricidade portuguesa.
 - tariffType: "simples", "bi-horaria", "tri-horaria" ou "desconhecido"
 - contractedPower: potência contratada em kVA
 - billingDays: número de dias do período de faturação (ex: de 01/01 a 31/01 são 31 dias); null se não houver datas
+- offPeakKwh: consumo em vazio em kWh, se a fatura o separar (bi-horária); senão null
 - averageDaily: consumo médio diário em kWh, se a fatura o indicar; senão null
-- suggestions: dicas concretas para este cliente poupar; potentialSaving sempre null (não temos os preços dos comercializadores para calcular poupanças)
+- suggestions: dicas concretas para este cliente poupar; potentialSaving sempre null (a poupança por mudar de comercializador é calculada à parte, com os preços da ERSE)
 - insights: horas de maior consumo e o que mais pesa na fatura, se a fatura o indicar; senão null
 
 Usar só valores que estão na fatura. Se um número não estiver na fatura, usar 0.
@@ -316,6 +332,8 @@ TEXTO DA FATURA:
         for suggestion in analysis_data['suggestions']:
             if isinstance(suggestion, dict):
                 suggestion['potentialSaving'] = None
+
+        analysis_data['supplierComparison'] = supplier_comparison(analysis_data)
 
         return jsonify({
             "processingStatus": "success",

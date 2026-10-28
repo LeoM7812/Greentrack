@@ -63,6 +63,7 @@ export default function Invoices({ onLogout, navigation }: any) {
       suggestions,
       insights: analysisData.insights || {},
       comparisonPreviousMonth: analysisData.comparisonPreviousMonth || undefined,
+      supplierComparison: analysisData.supplierComparison || undefined,
       uploadDate: new Date().toISOString(),
       processingStatus: (analysisData.processingStatus === 'success' ? 'success' : 'error') as InvoiceAnalysis['processingStatus']
     };

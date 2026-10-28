@@ -13,6 +13,21 @@ export interface InvoiceAnalysis {
     amountDifference: number | null; // % diferença
   };
   
+  // Ofertas mais baratas do simulador da ERSE para esta fatura (com taxas e IVA)
+  supplierComparison?: {
+    offers: {
+      supplier: string;
+      offer: string;
+      estimatedTotal: number; // euros, para o mesmo período da fatura
+      saving: number | null; // total pago - estimativa (negativo = mais caro)
+      loyaltyMonths: number;
+      link: string;
+    }[];
+    notes?: string[];
+    simulator?: string;
+    reason?: string; // porque não há comparação
+  };
+
   // Sugestões categorizadas
   suggestions: {
     category: 'tarifa' | 'consumo' | 'sustentabilidade' | 'fornecedor';

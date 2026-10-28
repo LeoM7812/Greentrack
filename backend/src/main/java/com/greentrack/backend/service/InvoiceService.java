@@ -94,6 +94,9 @@ public class InvoiceService {
                 suggestionsDTO.setAverageDaily(analysisData.path("averageDaily").asDouble());
                 suggestionsDTO.setTariffType(analysisData.path("tariffType").asText());
                 suggestionsDTO.setContractedPower(analysisData.path("contractedPower").asDouble());
+                if (analysisData.has("supplierComparison")) {
+                    suggestionsDTO.setSupplierComparison(analysisData.get("supplierComparison"));
+                }
             }
 
             return suggestionsDTO;
